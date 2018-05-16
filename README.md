@@ -56,7 +56,8 @@ See the [documentation for specific views](https://github.com/mozilla/telemetry-
 
 For example, to create a longitudinal view locally:
 ```bash
-sbt "run-main com.mozilla.telemetry.views.LongitudinalView --from 20160101 --to 20160701 --bucket telemetry-test-bucket"
+# Requires AWS creds
+sbt "runMain com.mozilla.telemetry.views.LongitudinalView --from 20160101 --to 20160701 --bucket telemetry-test-bucket"
 ```
 
 For distributed execution we pack all of the classes together into a single JAR and submit it to the cluster:
