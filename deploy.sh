@@ -24,7 +24,8 @@ else
     # Only continue uploading jar if the tag was on master branch
     pushd ${TRAVIS_BUILD_DIR}
     git show-ref
-
+    git remote update
+    git show-ref
     git checkout refs/heads/master
     git branch -a
 
