@@ -23,6 +23,12 @@ if [[ -z "$TRAVIS_TAG" ]]; then
 else
     # Only continue uploading jar if the tag was on master branch
     pushd ${TRAVIS_BUILD_DIR}
+
+    git branch -a
+
+    branchoutput=$(git branch)
+    echo "branchoutput is $branchoutput"
+
     # Finds all branches that contain the commit sha of TRAVIS_TAG
     output=$(git branch -r --contains `git rev-parse --verify ${TRAVIS_TAG}^{commit}`)
 
