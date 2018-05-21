@@ -23,7 +23,7 @@ if [[ -z "$TRAVIS_TAG" ]]; then
 else
     # Only continue uploading jar if the tag was on master branch
     pushd ${TRAVIS_BUILD_DIR}
-
+    git checkout master
     git branch -a
 
     branchoutput=$(git branch)
@@ -39,6 +39,7 @@ else
         # Exit 0 so the travis build doesn't fail
         exit 0
     fi
+    git checkout -
     popd
     BRANCH_OR_TAG=tags
     ID=$TRAVIS_TAG
