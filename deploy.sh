@@ -30,6 +30,7 @@ else
     git config --get remote.origin.fetch
     git fetch
 
+    git branch -a
     git checkout refs/heads/master
     git branch -a
 
