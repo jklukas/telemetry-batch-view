@@ -26,6 +26,10 @@ else
     git show-ref
     git remote update
     git show-ref
+
+    git config --get remote.origin.fetch
+    git fetch
+
     git checkout refs/heads/master
     git branch -a
 
