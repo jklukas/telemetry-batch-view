@@ -23,18 +23,12 @@ if [[ -z "$TRAVIS_TAG" ]]; then
 else
     # Only continue uploading jar if the tag was on master branch
     pushd ${TRAVIS_BUILD_DIR}
-    git show-ref
-    git remote update
-    git show-ref
 
-    git config --get remote.origin.fetch
-    
-    # This might be it
     git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
     git fetch
 
     git branch -a
-    git checkout refs/heads/master
+    git checkout remotes/origin/master
     git branch -a
 
     branchoutput=$(git branch)
