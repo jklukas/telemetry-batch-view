@@ -28,6 +28,9 @@ else
     git show-ref
 
     git config --get remote.origin.fetch
+    
+    # This might be it
+    git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
     git fetch
 
     git branch -a
