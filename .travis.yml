@@ -75,10 +75,10 @@ jobs:
 
 # Caching optimizations for faster builds taken from:
 # http://timperrett.com/2016/10/02/continuous-delivery-for-scala-with-travisci/
-cache:
-  directories:
-    - $HOME/.ivy2/cache
-    - $HOME/.sbt/boot
-after_success:
-  - find $HOME/.sbt -name "*.lock" | xargs rm
-  - find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm
+# cache:
+#   directories:
+#     - $HOME/.ivy2/cache
+#     - $HOME/.sbt/boot
+# after_success:
+#   - find $HOME/.sbt -name "*.lock" | xargs rm
+#   - find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm
