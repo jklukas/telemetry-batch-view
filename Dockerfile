@@ -1,4 +1,4 @@
-FROM hseeberger/scala-sbt:8u171_2.12.6_1.1.5
+FROM hseeberger/scala-sbt:8u151-2.12.4-1.1.1
 
 ENV _JAVA_OPTIONS="-Xms4G -Xmx4G -Xss4M -XX:MaxMetaspaceSize=512M"
 
