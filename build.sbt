@@ -73,3 +73,7 @@ publishTo := {
   else
     Some("releases"  at localMaven + "releases")
 }
+
+// Speeds up finding snapshot releases:
+// https://www.scala-sbt.org/1.x/docs/Combined+Pages.html#Latest+SNAPSHOTs
+updateOptions := updateOptions.value.withLatestSnapshots(false)
