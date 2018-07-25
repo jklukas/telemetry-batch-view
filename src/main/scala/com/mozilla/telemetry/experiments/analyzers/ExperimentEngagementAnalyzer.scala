@@ -73,6 +73,22 @@ object DailyAggCols extends ColumnEnumeration {
   )
 }
 
+/**
+  * Derived enrollment info calculated via window functions.
+  */
+object EnrollmentWindowCols extends ColumnEnumeration {
+  private val intDate: Column = InputCols.submission_date_s3.col.cast(IntegerType)
+  private val enrollmentDate: Column =
+    first(intDate).over(
+      Window
+        .partitionBy(InputCols.experiment_id.col, InputCols.experiment_branch.col, InputCols.client_id.col)
+        .orderBy(InputCols.submission_date_s3.col.asc)
+        .rowsBetween(Window.unboundedPreceding, Window.unboundedFollowing)
+    )
+  val week_number = Val(floor((intDate - enrollmentDate) / 7))
+}
+
+/**
   * Aggregations per experiment/branch/client, giving a summary per client
   * of engagement over all completed days of the experiment.
   */
@@ -83,6 +99,34 @@ object EngagementAggCols extends ColumnEnumeration {
     InputCols.client_id.col
   )
 
+  val hourlyUrisConsideredActive: Int = 5
+
+  private def retained(weekNumber: Int): Column = {
+    val sumHoursInWeek =
+      sum(
+        when(EnrollmentWindowCols.week_number.col === weekNumber, DailyAggCols.sum_total_hours.col)
+          .otherwise(0.0))
+    when(sumHoursInWeek > 0.0, 1.0).otherwise(0.0)
+  }
+
+  private def retainedActive(weekNumber: Int): Column = {
+    val activeDaysInWeek = sum(
+      when(EnrollmentWindowCols.week_number.col === weekNumber and
+        DailyAggCols.sum_total_uris.col > hourlyUrisConsideredActive, 1)
+        .otherwise(0)
+    )
+    when(activeDaysInWeek > 0, 1.0).otherwise(0.0)
+  }
+
+  val retained_in_week_1 = Val(retained(1))
+  val retained_in_week_2 = Val(retained(2))
+  val retained_in_week_3 = Val(retained(3))
+
+  val retained_active_in_week_1 = Val(retainedActive(1))
+  val retained_active_in_week_2 = Val(retainedActive(2))
+  val retained_active_in_week_3 = Val(retainedActive(3))
+
+  val engagement_daily_hours = Val(avg(DailyAggCols.sum_total_hours.col))
   val engagement_daily_active_hours = Val(avg(DailyAggCols.sum_active_hours.col))
   val engagement_hourly_uris = Val(
     sum(DailyAggCols.sum_total_uris.col) /
@@ -242,6 +286,12 @@ object ExperimentEngagementAnalyzer {
     // |-- experiment_id: string (nullable = true)
     // |-- experiment_branch: string (nullable = true)
     // |-- client_id: string (nullable = true)
+    // |-- retained_in_week_1: double (nullable = false)
+    // |-- retained_in_week_2: double (nullable = false)
+    // |-- retained_in_week_3: double (nullable = false)
+    // |-- retained_active_in_week_1: double (nullable = false)
+    // |-- retained_active_in_week_2: double (nullable = false)
+    // |-- retained_active_in_week_3: double (nullable = false)
     // |-- engagement_daily_hours: double (nullable = false)
     // |-- engagement_daily_active_hours: double (nullable = false)
     // |-- engagement_hourly_uris: double (nullable = false)
