@@ -4,7 +4,7 @@
 package com.mozilla.telemetry
 
 import com.holdenkarau.spark.testing.DataFrameSuiteBase
-import com.mozilla.telemetry.experiments.analyzers.{EngagementAggCols, ExperimentEngagementAnalyzer, StatisticalComputation}
+import com.mozilla.telemetry.experiments.analyzers.{CrashAnalyzer, EngagementAggCols, ExperimentEngagementAnalyzer, MetricAnalysis, StatisticalComputation}
 import com.mozilla.telemetry.views.ExperimentAnalysisView
 import org.apache.spark.sql.functions.col
 import org.scalatest.{FlatSpec, Matchers}
