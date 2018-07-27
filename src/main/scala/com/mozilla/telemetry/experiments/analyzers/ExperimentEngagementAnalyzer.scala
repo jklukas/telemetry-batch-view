@@ -111,15 +111,16 @@ object EngagementAggCols extends ColumnEnumeration {
     val sumHoursInWeek =
       sum(
         when(EnrollmentWindowCols.week_number.col === weekNumber, DailyAggCols.sum_total_hours.col)
-          .otherwise(0.0))
+        otherwise 0.0
+      )
     when(sumHoursInWeek > 0.0, 1.0).otherwise(0.0)
   }
 
   private def retainedActive(weekNumber: Int): Column = {
     val activeDaysInWeek = sum(
       when(EnrollmentWindowCols.week_number.col === weekNumber and
-        DailyAggCols.sum_total_uris.col > hourlyUrisConsideredActive, 1)
-        .otherwise(0)
+           DailyAggCols.sum_total_uris.col > hourlyUrisConsideredActive, 1)
+      otherwise 0
     )
     when(activeDaysInWeek > 0, 1.0).otherwise(0.0)
   }
