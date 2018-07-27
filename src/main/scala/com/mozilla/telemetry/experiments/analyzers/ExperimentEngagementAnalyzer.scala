@@ -31,8 +31,8 @@ case class ConfidenceInterval(arr: Array[Double]) {
   * Columns we need to pull from the input DataFrame.
   */
 object InputCols extends ColumnEnumeration {
-  val experiment_id, experiment_branch, client_id, submission_date_s3 = Val()
-  val total_time, active_ticks, scalar_parent_browser_engagement_total_uri_count = Val()
+  val experiment_id, experiment_branch, client_id, submission_date_s3 = ColumnDefinition()
+  val total_time, active_ticks, scalar_parent_browser_engagement_total_uri_count = ColumnDefinition()
 }
 
 /**
@@ -46,9 +46,9 @@ object InputWindowCols extends ColumnEnumeration {
           .partitionBy(InputCols.experiment_id.col, InputCols.client_id.col)
           .rowsBetween(Window.unboundedPreceding, Window.unboundedFollowing)))
 
-  val branch_count = Val(size(sortedBranchesPerClient))
+  val branch_count = ColumnDefinition(size(sortedBranchesPerClient))
 
-  val branch_index = Val(
+  val branch_index = ColumnDefinition(
     when(InputCols.experiment_branch.col === sortedBranchesPerClient.getItem(0), 0)
     otherwise 1
   )
@@ -68,13 +68,13 @@ object DailyAggCols extends ColumnEnumeration {
   val ticksPerSecond: Double = 5.0
   val secondsPerHour: Double = 3600.0
 
-  val sum_total_hours = Val(
+  val sum_total_hours = ColumnDefinition(
     sum(InputCols.total_time.col).cast(DoubleType) / secondsPerHour
   )
-  val sum_active_hours = Val(
+  val sum_active_hours = ColumnDefinition(
     sum(InputCols.active_ticks.col.cast(DoubleType) * ticksPerSecond / secondsPerHour)
   )
-  val sum_total_uris = Val(
+  val sum_total_uris = ColumnDefinition(
     sum(InputCols.scalar_parent_browser_engagement_total_uri_count.col)
   )
 }
@@ -91,7 +91,7 @@ object EnrollmentWindowCols extends ColumnEnumeration {
         .orderBy(InputCols.submission_date_s3.col.asc)
         .rowsBetween(Window.unboundedPreceding, Window.unboundedFollowing)
     )
-  val week_number = Val(floor((intDate - enrollmentDate) / 7))
+  val week_number = ColumnDefinition(floor((intDate - enrollmentDate) / 7))
 }
 
 /**
@@ -125,21 +125,21 @@ object EngagementAggCols extends ColumnEnumeration {
     when(activeDaysInWeek > 0, 1.0).otherwise(0.0)
   }
 
-  val retained_in_week_1 = Val(retained(1))
-  val retained_in_week_2 = Val(retained(2))
-  val retained_in_week_3 = Val(retained(3))
+  val retained_in_week_1 = ColumnDefinition(retained(1))
+  val retained_in_week_2 = ColumnDefinition(retained(2))
+  val retained_in_week_3 = ColumnDefinition(retained(3))
 
-  val retained_active_in_week_1 = Val(retainedActive(1))
-  val retained_active_in_week_2 = Val(retainedActive(2))
-  val retained_active_in_week_3 = Val(retainedActive(3))
+  val retained_active_in_week_1 = ColumnDefinition(retainedActive(1))
+  val retained_active_in_week_2 = ColumnDefinition(retainedActive(2))
+  val retained_active_in_week_3 = ColumnDefinition(retainedActive(3))
 
-  val engagement_daily_hours = Val(avg(DailyAggCols.sum_total_hours.col))
-  val engagement_daily_active_hours = Val(avg(DailyAggCols.sum_active_hours.col))
-  val engagement_hourly_uris = Val(
+  val engagement_daily_hours = ColumnDefinition(avg(DailyAggCols.sum_total_hours.col))
+  val engagement_daily_active_hours = ColumnDefinition(avg(DailyAggCols.sum_active_hours.col))
+  val engagement_hourly_uris = ColumnDefinition(
     sum(DailyAggCols.sum_total_uris.col) /
       (sum(DailyAggCols.sum_active_hours.col) + 1.0 / DailyAggCols.secondsPerHour)
   )
-  val engagement_intensity = Val(
+  val engagement_intensity = ColumnDefinition(
     sum(DailyAggCols.sum_active_hours.col) /
       (sum(DailyAggCols.sum_total_hours.col) + 1.0 / DailyAggCols.secondsPerHour)
   )
