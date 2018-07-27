@@ -220,7 +220,7 @@ object ExperimentEngagementAnalyzer {
       .zipped
       .foldLeft(dailyWithOutliers) { case (df, (measure, cut)) =>
         val entriesCut = df.where(measure >= cut).count()
-        logger.info(s"Outlier filter: cutting $entriesCut rows with $measure < $cut")
+        logger.info(s"Outlier filter: cutting $entriesCut rows with $measure >= $cut")
         df.where(measure < cut)
       }
 
