@@ -39,23 +39,19 @@ object InputCols extends ColumnEnumeration {
   * Derived columns calculated via window functions.
   */
 object InputWindowCols extends ColumnEnumeration {
-  val partitionCols: Array[Column] = Array(
-    InputCols.experiment_id.col,
-    InputCols.client_id.col
-  )
-
-  val branch_count = Val(
-    size(
+  val sortedBranchesPerClient: Column =
+    sort_array(
       collect_set(InputCols.experiment_branch.col).over(
         Window
-          .partitionBy(partitionCols: _*)
-          .rowsBetween(Window.unboundedPreceding, Window.unboundedFollowing))))
+          .partitionBy(InputCols.experiment_id.col, InputCols.client_id.col)
+          .rowsBetween(Window.unboundedPreceding, Window.unboundedFollowing)))
+
+  val branch_count = Val(size(sortedBranchesPerClient))
 
   val branch_index = Val(
-    row_number().over(
-      Window
-        .partitionBy(partitionCols: _*)
-        .orderBy(InputCols.experiment_branch.col)))
+    when(InputCols.experiment_branch.col === sortedBranchesPerClient.getItem(0), 0)
+    otherwise 1
+  )
 }
 
 /**
@@ -192,7 +188,7 @@ object ExperimentEngagementAnalyzer {
 
     val inputWithBranchCount = input
       .select(col("*"), InputWindowCols.branch_count.expr, InputWindowCols.branch_index.expr)
-      .filter(InputWindowCols.branch_index.col === 1)
+      .filter(InputWindowCols.branch_index.col === 0)
       .drop(InputWindowCols.branch_index.col)
       .persist()
 
