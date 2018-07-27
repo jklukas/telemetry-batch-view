@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 package com.mozilla.telemetry.experiments.analyzers
 
-import breeze.stats.distributions.Poisson
+import breeze.stats.distributions.{Poisson, RandBasis}
+import com.mozilla.telemetry.experiments.statistics.StatisticalComputation
 import com.mozilla.telemetry.utils.ColumnEnumeration
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
@@ -38,14 +39,23 @@ object InputCols extends ColumnEnumeration {
   * Derived columns calculated via window functions.
   */
 object InputWindowCols extends ColumnEnumeration {
-  private val branchSet: Column =
-    collect_set(InputCols.experiment_branch.col).over(
-      Window
-        .partitionBy(InputCols.experiment_id.col, InputCols.client_id.col)
-        .rowsBetween(Window.unboundedPreceding, Window.unboundedFollowing)
-    )
+  val partitionCols: Array[Column] = Array(
+    InputCols.experiment_id.col,
+    InputCols.client_id.col
+  )
 
-  val branch_count = Val(size(branchSet))
+  val branch_count = Val(
+    size(
+      collect_set(InputCols.experiment_branch.col).over(
+        Window
+          .partitionBy(partitionCols: _*)
+          .rowsBetween(Window.unboundedPreceding, Window.unboundedFollowing))))
+
+  val branch_index = Val(
+    row_number().over(
+      Window
+        .partitionBy(partitionCols: _*)
+        .orderBy(InputCols.experiment_branch.col)))
 }
 
 /**
@@ -139,72 +149,12 @@ object EngagementAggCols extends ColumnEnumeration {
 }
 
 /**
-  * Object capturing the logic for naming and computing a particular percentile.
-  *
-  * @param pInt The desired percentile as an integer between 0 and 100
-  */
-case class PercentileComputation(pInt: Int) extends StatisticalComputation {
-  val p: Double = pInt * 0.01
-
-  override def name: String = pInt match {
-    case 50 => "Median"
-    case _ => s"${pInt}th Percentile"
-  }
-
-  /**
-    * Based on https://github.com/scalanlp/breeze/blob/releases/v1.0-RC2/math/src/main/scala/breeze/stats/DescriptiveStats.scala#L523
-    *
-    * The array must already be sorted.
-    */
-  override def calculate(arr: Array[Double]): Double = {
-      if (p > 1 || p < 0) throw new IllegalArgumentException("p must be in [0,1]")
-      // +1 so that the .5 == mean for even number of elements.
-      val f = (arr.length + 1) * p
-      val i = f.toInt
-      if (i == 0) {
-        arr.head
-      }
-      else if (i >= arr.length) {
-        arr.last
-      }
-      else {
-        arr(i - 1) + (f - i) * (arr(i) - arr(i - 1))
-      }
-    }
-}
-
-object MeanComputation extends StatisticalComputation {
-  override val name: String = "Mean"
-  override def calculate(arr: Array[Double]): Double = {
-    breeze.stats.mean(arr)
-  }
-}
-
-object StatisticalComputation {
-  val percentileInts: Seq[Int] = 5 +: (10 to 90 by 10) :+ 95
-  val percentiles: Seq[PercentileComputation] = percentileInts.map(PercentileComputation)
-  val values: Seq[StatisticalComputation] = percentiles :+ MeanComputation
-  val names: Seq[String] = values.map(_.name)
-}
-
-trait StatisticalComputation {
-  def name: String
-  def calculate(arr: Array[Double]): Double
-}
-
-
-/**
   * Introduced for bug 1460090, based on a proof-of-concept analysis in
   * https://metrics.mozilla.com/protected/sguha/shield_bootstrap.html
   */
 object ExperimentEngagementAnalyzer {
 
   val logger: org.slf4j.Logger = org.slf4j.LoggerFactory.getLogger(getClass)
-
-  // Each executor will get a new copy of this variable as it will be included in the percentileArrays closure;
-  // it looks to use ThreadLocals such that each thread is getting a unique random generator.
-  val poisson = Poisson(mean = 1.0)
-
 
   /**
     * Takes in a dataframe of observations from the `experiments` dataset, calculates aggregate engagement
@@ -241,13 +191,13 @@ object ExperimentEngagementAnalyzer {
       input: DataFrame, outlierPercentile: Double = 0.9999, relativeError: Double = 0.0001): DataFrame = {
 
     val inputWithBranchCount = input
-      .select(col("*"), InputWindowCols.branch_count.expr)
+      .select(col("*"), InputWindowCols.branch_count.expr, InputWindowCols.branch_index.expr)
+      .filter(InputWindowCols.branch_index.col === 1)
+      .drop(InputWindowCols.branch_index.col)
       .persist()
 
     val numClientsSwitchingBranches = inputWithBranchCount
       .filter(InputWindowCols.branch_count.col > 1)
-      .select(InputCols.experiment_id.col, InputCols.client_id.col)
-      .distinct()
       .count()
 
     logger.info(s"Pruning $numClientsSwitchingBranches " +
@@ -255,6 +205,7 @@ object ExperimentEngagementAnalyzer {
 
     val dailyWithOutliers = inputWithBranchCount
       .filter(InputWindowCols.branch_count.col === 1)
+      .drop(InputWindowCols.branch_count.col)
       .groupBy(DailyAggCols.partitionCols: _*)
       .agg(DailyAggCols.exprs.head, DailyAggCols.exprs.tail: _*)
       .select(col("*"), EnrollmentWindowCols.week_number.expr)
@@ -270,8 +221,9 @@ object ExperimentEngagementAnalyzer {
 
     val daily = (DailyAggCols.cols, outlierCutoffs)
       .zipped
-      .foldLeft(dailyWithOutliers) { (df, cutInfo) =>
-        val (measure, cut) = cutInfo
+      .foldLeft(dailyWithOutliers) { case (df, (measure, cut)) =>
+        val entriesCut = df.where(measure >= cut).count()
+        logger.info(s"Outlier filter: cutting $entriesCut rows with $measure < $cut")
         df.where(measure < cut)
       }
 
@@ -348,7 +300,10 @@ object ExperimentEngagementAnalyzer {
     // and returns an array giving one value per calculated percentile.
     //
     // See: https://metrics.mozilla.com/protected/sguha/shield_bootstrap.html#bootstrapping
-    val bootstrapComputations: Array[Array[Double]] = sc.parallelize(1 to iterations).flatMap { _ =>
+    val bootstrapComputations: Array[Array[Double]] = sc.parallelize(1 to iterations).flatMap { i =>
+      // By setting the seed based on iteration number, we'll get the same list of poisson weights
+      // across different measures, preserving joint distributions.
+      val poisson = Poisson(mean = 1.0)(RandBasis.withSeed(i))
 
       // For each observation, we draw a random poisson value (usually 0 or 1 with a tail of larger integers)
       // and duplicate the observation that many times.
