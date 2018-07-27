@@ -268,4 +268,46 @@ class ExperimentAnalysisViewTest extends FlatSpec with Matchers with DataFrameSu
     meanStats.confidence_high.get should be > meanStats.value
     meanStats.confidence_high.get should be <= 1.0
   }
+
+  "Retention metrics" can "be calculated" in {
+    import spark.implicits._
+
+    val row = ExperimentSummaryEngagementRow(
+        client_id = "client1",
+        experiment_id = "experiment_1",
+        experiment_branch = "control",
+        submission_date_s3 = "20180101",
+        total_time = 3600,
+        active_ticks = 1000,
+        scalar_parent_browser_engagement_total_uri_count = 0
+      )
+
+    val outlier = row.copy(
+      client_id = "other",
+      total_time = 40000,
+      active_ticks = 10000,
+      scalar_parent_browser_engagement_total_uri_count = 300
+    )
+
+    val activeInWeek1 = row.copy(
+      submission_date_s3 = "20180108",
+      scalar_parent_browser_engagement_total_uri_count = 10)
+    val retainedInWeek3 = row.copy(
+      submission_date_s3 = "20180122",
+      scalar_parent_browser_engagement_total_uri_count = 0)
+
+    val data = Seq(row, outlier, activeInWeek1, retainedInWeek3).toDF()
+
+    val metrics = ExperimentEngagementAnalyzer.getMetrics(data, iterations = 5)
+
+    def meanValueForMetric(metricName: String): Double =
+      metrics.filter(_.metric_name == metricName).head.statistics.get.filter(_.name == "Mean").head.value
+
+    meanValueForMetric("retained_in_week_1") should be (1.0)
+    meanValueForMetric("retained_in_week_2") should be (0.0)
+    meanValueForMetric("retained_in_week_3") should be (1.0)
+    meanValueForMetric("retained_active_in_week_1") should be (1.0)
+    meanValueForMetric("retained_active_in_week_2") should be (0.0)
+    meanValueForMetric("retained_active_in_week_3") should be (0.0)
+  }
 }
