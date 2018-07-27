@@ -83,15 +83,15 @@ object DailyAggCols extends ColumnEnumeration {
   * Derived enrollment info calculated via window functions.
   */
 object EnrollmentWindowCols extends ColumnEnumeration {
-  private val intDate: Column = InputCols.submission_date_s3.col.cast(IntegerType)
+  private val date: Column = to_date(InputCols.submission_date_s3.col, "yyyyMMdd")
   private val enrollmentDate: Column =
-    first(intDate).over(
+    first(date).over(
       Window
         .partitionBy(InputCols.experiment_id.col, InputCols.experiment_branch.col, InputCols.client_id.col)
         .orderBy(InputCols.submission_date_s3.col.asc)
         .rowsBetween(Window.unboundedPreceding, Window.unboundedFollowing)
     )
-  val week_number = ColumnDefinition(floor((intDate - enrollmentDate) / 7))
+  val week_number = ColumnDefinition(floor(datediff(date, enrollmentDate) / 7))
 }
 
 /**

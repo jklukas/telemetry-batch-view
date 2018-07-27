@@ -11,7 +11,7 @@ object Cols extends ColumnEnumeration {
   val custom_definition = ColumnDefinition(new Column("base_column") / 5)
 }
 
-class ExperimentEngagementAnalyzerTest extends FlatSpec with Matchers {
+class ColumnEnumerationTest extends FlatSpec with Matchers {
 
   "implicit defs" can "be accessed" in {
     Cols.first_one.name shouldBe "first_one"

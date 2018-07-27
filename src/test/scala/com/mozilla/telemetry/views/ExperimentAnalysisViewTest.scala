@@ -4,7 +4,7 @@
 package com.mozilla.telemetry
 
 import com.holdenkarau.spark.testing.DataFrameSuiteBase
-import com.mozilla.telemetry.experiments.analyzers.{CrashAnalyzer, EngagementAggCols, ExperimentEngagementAnalyzer, MetricAnalysis}
+import com.mozilla.telemetry.experiments.analyzers.{CrashAnalyzer, EngagementAggCols, EnrollmentWindowCols, ExperimentEngagementAnalyzer, MetricAnalysis}
 import com.mozilla.telemetry.experiments.statistics.StatisticalComputation
 import com.mozilla.telemetry.views.ExperimentAnalysisView
 import org.apache.spark.sql.functions.col
@@ -179,6 +179,38 @@ class ExperimentAnalysisViewTest extends FlatSpec with Matchers with DataFrameSu
 
     val totalClients = metadata.flatMap(_.statistics.get.filter(_.name == "Total Clients").map(_.value)).sum
     totalClients should be (3.0)
+  }
+
+  "Week number" should "be correctly calculated" in {
+    import spark.implicits._
+
+    val row1 = ExperimentSummaryEngagementRow(
+      client_id = "client1",
+      experiment_id = "experiment_1",
+      experiment_branch = "control",
+      submission_date_s3 = "20180101",
+      total_time = 3600,
+      active_ticks = 1000,
+      scalar_parent_browser_engagement_total_uri_count = 20
+    )
+    val df = Seq(
+      row1.copy(submission_date_s3 = "20180101"),
+      row1.copy(submission_date_s3 = "20180107"),
+      row1.copy(submission_date_s3 = "20180108"),
+      row1.copy(submission_date_s3 = "20180114"),
+      row1.copy(submission_date_s3 = "20180115"),
+      row1.copy(submission_date_s3 = "20180121"),
+      row1.copy(submission_date_s3 = "20180122"),
+      row1.copy(submission_date_s3 = "20180128"),
+      row1.copy(submission_date_s3 = "20180129"),
+      row1.copy(submission_date_s3 = "20180201")
+    ).toDF()
+
+    val weekNums = df
+      .select(EnrollmentWindowCols.week_number.expr)
+      .collect()
+      .map(_.getLong(0))
+    weekNums should be (Array(0, 0, 1, 1, 2, 2, 3, 3, 4, 4))
   }
 
   "Engagement metrics" can "be calculated" in {
