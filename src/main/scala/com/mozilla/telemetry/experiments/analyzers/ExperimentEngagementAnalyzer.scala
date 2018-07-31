@@ -16,7 +16,8 @@ import org.apache.spark.sql.{Column, DataFrame}
   * https://metrics.mozilla.com/protected/sguha/shield_bootstrap.html#the-shift-plot
   */
 object ConfidenceInterval {
-  val confidenceLevel:  Double = 0.975
+  val confidenceLevel:  Double = 0.99
+  val significanceLevel: Double = 1 - confidenceLevel
   val confidenceMargin: Double = 0.5 * (1.0 - confidenceLevel)
   val percentileLow:    Double = 0.0 + confidenceMargin
   val percentileHigh:   Double = 1.0 - confidenceMargin
@@ -322,7 +323,10 @@ object ExperimentEngagementAnalyzer {
         .zipped
         .map { case (fullSampleValue, bootstrapValues, nameForComputation) =>
           val confidence = ConfidenceInterval(bootstrapValues)
-          Statistic(None, nameForComputation, fullSampleValue, Some(confidence.low), Some(confidence.high), None, None)
+          Statistic(
+            None, nameForComputation, fullSampleValue,
+            Some(confidence.low), Some(confidence.high),
+            Some(ConfidenceInterval.significanceLevel), None)
         }
 
     MetricAnalysis(experimentId, branch, "", count, measure, "DoubleScalar",
