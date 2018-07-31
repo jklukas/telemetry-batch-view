@@ -7,7 +7,7 @@ import breeze.stats.distributions.{Poisson, RandBasis}
 import com.mozilla.telemetry.experiments.statistics.StatisticalComputation
 import com.mozilla.telemetry.utils.{AnyValueIsTrue, ColumnEnumeration}
 import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.functions._
+import org.apache.spark.sql.{functions => f}
 import org.apache.spark.sql.types.DoubleType
 import org.apache.spark.sql.{Column, DataFrame}
 
@@ -41,16 +41,16 @@ object InputCols extends ColumnEnumeration {
   */
 object InputWindowCols extends ColumnEnumeration {
   val sortedBranchesPerClient: Column =
-    sort_array(
-      collect_set(InputCols.experiment_branch.col).over(
+    f.sort_array(
+      f.collect_set(InputCols.experiment_branch.col).over(
         Window
           .partitionBy(InputCols.experiment_id.col, InputCols.client_id.col)
           .rowsBetween(Window.unboundedPreceding, Window.unboundedFollowing)))
 
-  val branch_count = ColumnDefinition(size(sortedBranchesPerClient))
+  val branch_count = ColumnDefinition(f.size(sortedBranchesPerClient))
 
   val branch_index = ColumnDefinition(
-    when(InputCols.experiment_branch.col === sortedBranchesPerClient.getItem(0), 0)
+    f.when(InputCols.experiment_branch.col === sortedBranchesPerClient.getItem(0), 0)
     otherwise 1
   )
 }
@@ -70,13 +70,13 @@ object DailyAggCols extends ColumnEnumeration {
   val secondsPerHour: Double = 3600.0
 
   val sum_total_hours = ColumnDefinition(
-    sum(InputCols.total_time.col).cast(DoubleType) / secondsPerHour
+    f.sum(InputCols.total_time.col).cast(DoubleType) / secondsPerHour
   )
   val sum_active_hours = ColumnDefinition(
-    sum(InputCols.active_ticks.col.cast(DoubleType) * ticksPerSecond / secondsPerHour)
+    f.sum(InputCols.active_ticks.col.cast(DoubleType) * ticksPerSecond / secondsPerHour)
   )
   val sum_total_uris = ColumnDefinition(
-    sum(InputCols.scalar_parent_browser_engagement_total_uri_count.col)
+    f.sum(InputCols.scalar_parent_browser_engagement_total_uri_count.col)
   )
 }
 
@@ -84,15 +84,15 @@ object DailyAggCols extends ColumnEnumeration {
   * Derived enrollment info calculated via window functions.
   */
 object EnrollmentWindowCols extends ColumnEnumeration {
-  private val date: Column = to_date(InputCols.submission_date_s3.col, "yyyyMMdd")
+  private val date: Column = f.to_date(InputCols.submission_date_s3.col, "yyyyMMdd")
   private val enrollmentDate: Column =
-    first(date).over(
+    f.first(date).over(
       Window
         .partitionBy(InputCols.experiment_id.col, InputCols.experiment_branch.col, InputCols.client_id.col)
         .orderBy(InputCols.submission_date_s3.col.asc)
         .rowsBetween(Window.unboundedPreceding, Window.unboundedFollowing)
     )
-  val week_number = ColumnDefinition(floor(datediff(date, enrollmentDate) / 7))
+  val week_number = ColumnDefinition(f.floor(f.datediff(date, enrollmentDate) / 7))
 }
 
 /**
@@ -113,13 +113,13 @@ object EngagementAggCols extends ColumnEnumeration {
   private def retained(weekNumber: Int): Column = {
     val anyHours = anyTrue(EnrollmentWindowCols.week_number.col === weekNumber and
                            DailyAggCols.sum_total_hours.col > 0)
-    when(anyHours, 1.0) otherwise 0.0
+    f.when(anyHours, 1.0) otherwise 0.0
   }
 
   private def retainedActive(weekNumber: Int): Column = {
     val anyActive = anyTrue(EnrollmentWindowCols.week_number.col === weekNumber and
                             DailyAggCols.sum_total_uris.col > hourlyUrisConsideredActive)
-    when(anyActive, 1.0) otherwise 0.0
+    f.when(anyActive, 1.0) otherwise 0.0
   }
 
   val retained_in_week_1 = ColumnDefinition(retained(1))
@@ -130,15 +130,15 @@ object EngagementAggCols extends ColumnEnumeration {
   val retained_active_in_week_2 = ColumnDefinition(retainedActive(2))
   val retained_active_in_week_3 = ColumnDefinition(retainedActive(3))
 
-  val engagement_daily_hours = ColumnDefinition(avg(DailyAggCols.sum_total_hours.col))
-  val engagement_daily_active_hours = ColumnDefinition(avg(DailyAggCols.sum_active_hours.col))
+  val engagement_daily_hours = ColumnDefinition(f.avg(DailyAggCols.sum_total_hours.col))
+  val engagement_daily_active_hours = ColumnDefinition(f.avg(DailyAggCols.sum_active_hours.col))
   val engagement_hourly_uris = ColumnDefinition(
-    sum(DailyAggCols.sum_total_uris.col) /
-      (sum(DailyAggCols.sum_active_hours.col) + 1.0 / DailyAggCols.secondsPerHour)
+    f.sum(DailyAggCols.sum_total_uris.col) /
+      (f.sum(DailyAggCols.sum_active_hours.col) + 1.0 / DailyAggCols.secondsPerHour)
   )
   val engagement_intensity = ColumnDefinition(
-    sum(DailyAggCols.sum_active_hours.col) /
-      (sum(DailyAggCols.sum_total_hours.col) + 1.0 / DailyAggCols.secondsPerHour)
+    f.sum(DailyAggCols.sum_active_hours.col) /
+      (f.sum(DailyAggCols.sum_total_hours.col) + 1.0 / DailyAggCols.secondsPerHour)
   )
 }
 
@@ -185,7 +185,7 @@ object ExperimentEngagementAnalyzer {
       input: DataFrame, outlierPercentile: Double = 0.9999, relativeError: Double = 0.0001): DataFrame = {
 
     val inputWithBranchCount = input
-      .select(col("*"), InputWindowCols.branch_count.expr, InputWindowCols.branch_index.expr)
+      .select(f.col("*"), InputWindowCols.branch_count.expr, InputWindowCols.branch_index.expr)
       .filter(InputWindowCols.branch_index.col === 0)
       .drop(InputWindowCols.branch_index.col)
       .persist()
@@ -202,7 +202,7 @@ object ExperimentEngagementAnalyzer {
       .drop(InputWindowCols.branch_count.col)
       .groupBy(DailyAggCols.partitionCols: _*)
       .agg(DailyAggCols.exprs.head, DailyAggCols.exprs.tail: _*)
-      .select(col("*"), EnrollmentWindowCols.week_number.expr)
+      .select(f.col("*"), EnrollmentWindowCols.week_number.expr)
       .persist()
 
     inputWithBranchCount.unpersist()
