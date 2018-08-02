@@ -5,12 +5,13 @@ package com.mozilla.telemetry.utils
 
 import java.math.BigDecimal
 import java.sql.{Date, Timestamp}
+
 import org.apache.spark.sql.expressions.{MutableAggregationBuffer, UserDefinedAggregateFunction}
-import org.apache.spark.sql.{Column, Row, SparkSession}
+import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.types._
-import org.apache.spark.sql.functions._
 import com.mozilla.spark.sql.hyperloglog.functions._
 import com.mozilla.spark.sql.hyperloglog.aggregates._
+
 import scala.annotation.tailrec
 
 class CollectList(inputStruct: StructType, orderCols: List[String], maxLength: Option[Int]) extends UserDefinedAggregateFunction {
@@ -288,46 +289,6 @@ class AggMapFirst() extends UserDefinedAggregateFunction {
 
   // the buffer is the output value
   override def evaluate(buffer: Row): Any = buffer.getMap(0)
-}
-
-class AnyValueIsTrue extends UserDefinedAggregateFunction {
-  /**
-    * Takes in a boolean column and returns false iff every member of the input column is false.
-    */
-
-  // This is the input fields for your aggregate function.
-  override def inputSchema: org.apache.spark.sql.types.StructType =
-    StructType(StructField("value", BooleanType) :: Nil)
-
-  // This is the internal fields you keep for computing your aggregate.
-  override def bufferSchema: StructType = StructType(
-    StructField("value", BooleanType) :: Nil
-  )
-
-  // This is the output type of your aggregatation function.
-  override def dataType: DataType = BooleanType
-
-  override def deterministic: Boolean = true
-
-  // This is the initial value for your buffer schema.
-  override def initialize(buffer: MutableAggregationBuffer): Unit = {
-    buffer(0) = false
-  }
-
-  // This is how to update your buffer schema given an input.
-  override def update(buffer: MutableAggregationBuffer, input: Row): Unit = {
-    buffer(0) = buffer.getBoolean(0) || input.getBoolean(0)
-  }
-
-  // This is how to merge two objects with the bufferSchema type.
-  override def merge(buffer1: MutableAggregationBuffer, buffer2: Row): Unit = {
-    buffer1(0) = buffer1.getBoolean(0) || buffer2.getBoolean(0)
-  }
-
-  // This is where you output the final value, given the final value of your bufferSchema.
-  override def evaluate(buffer: Row): Any = {
-    buffer.getBoolean(0)
-  }
 }
 
 object UDFs{

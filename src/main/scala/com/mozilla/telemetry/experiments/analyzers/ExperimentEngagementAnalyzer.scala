@@ -5,7 +5,7 @@ package com.mozilla.telemetry.experiments.analyzers
 
 import breeze.stats.distributions.{Poisson, RandBasis}
 import com.mozilla.telemetry.experiments.statistics.StatisticalComputation
-import com.mozilla.telemetry.utils.{AnyValueIsTrue, ColumnEnumeration}
+import com.mozilla.telemetry.utils.ColumnEnumeration
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.{functions => f}
 import org.apache.spark.sql.types.DoubleType
@@ -106,20 +106,20 @@ object EngagementAggCols extends ColumnEnumeration {
     InputCols.client_id.col
   )
 
-  private val anyTrue = new AnyValueIsTrue
-
   val hourlyUrisConsideredActive: Int = 5
 
   private def retained(weekNumber: Int): Column = {
-    val anyHours = anyTrue(EnrollmentWindowCols.week_number.col === weekNumber and
-                           DailyAggCols.sum_total_hours.col > 0)
-    f.when(anyHours, 1.0) otherwise 0.0
+    val hadActivityAnyDayInWeek =
+      f.max(EnrollmentWindowCols.week_number.col === weekNumber and
+            DailyAggCols.sum_total_hours.col > 0)
+    f.when(hadActivityAnyDayInWeek, 1.0) otherwise 0.0
   }
 
   private def retainedActive(weekNumber: Int): Column = {
-    val anyActive = anyTrue(EnrollmentWindowCols.week_number.col === weekNumber and
-                            DailyAggCols.sum_total_uris.col > hourlyUrisConsideredActive)
-    f.when(anyActive, 1.0) otherwise 0.0
+    val wasActiveAnyDayInWeek =
+      f.max(EnrollmentWindowCols.week_number.col === weekNumber and
+            DailyAggCols.sum_total_uris.col > hourlyUrisConsideredActive)
+    f.when(wasActiveAnyDayInWeek, 1.0) otherwise 0.0
   }
 
   val retained_in_week_1 = ColumnDefinition(retained(1))
