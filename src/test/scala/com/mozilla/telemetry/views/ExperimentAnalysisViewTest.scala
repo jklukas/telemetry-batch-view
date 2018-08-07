@@ -280,9 +280,9 @@ class ExperimentAnalysisViewTest extends FlatSpec with Matchers with DataFrameSu
     medianStats.confidence_low.get should be < medianStats.value
     medianStats.confidence_high.get should be > medianStats.value
 
-    val filteredRetention1Week = metrics.filter(_.metric_name == "retained_in_week_1")
-    filteredRetention1Week should have length 1
-    val retained = filteredRetention1Week.head
+    val filteredRetentionWeek2 = metrics.filter(_.metric_name == "retained_in_week_2")
+    filteredRetentionWeek2 should have length 1
+    val retained = filteredRetentionWeek2.head
     val meanStats = retained.statistics.get.filter(_.name == "Mean").head
     meanStats.value should equal(0.75 +- 0.01)
     meanStats.confidence_low.get should be < meanStats.value
