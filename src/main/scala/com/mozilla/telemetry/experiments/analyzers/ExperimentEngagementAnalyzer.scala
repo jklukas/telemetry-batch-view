@@ -86,10 +86,9 @@ object DailyAggCols extends ColumnEnumeration {
 object EnrollmentWindowCols extends ColumnEnumeration {
   private val date: Column = f.to_date(InputCols.submission_date_s3.col, "yyyyMMdd")
   private val enrollmentDate: Column =
-    f.first(date).over(
+    f.min(date).over(
       Window
         .partitionBy(InputCols.experiment_id.col, InputCols.experiment_branch.col, InputCols.client_id.col)
-        .orderBy(InputCols.submission_date_s3.col.asc)
         .rowsBetween(Window.unboundedPreceding, Window.unboundedFollowing)
     )
   val week_number = ColumnDefinition(f.floor(f.datediff(date, enrollmentDate) / 7))
