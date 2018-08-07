@@ -137,13 +137,18 @@ object EngagementAggCols extends ColumnEnumeration {
   val retained_active_in_week_2 = ColumnDefinition(retainedActive(2))
   val retained_active_in_week_3 = ColumnDefinition(retainedActive(3))
 
+  // 1 second expressed in hours; used to calculations below to avoid division by zero.
+  private val hoursEpsilon: Double = 1.0 / DailyAggCols.secondsPerHour
+
   val engagement_daily_hours = ColumnDefinition(f.avg(DailyAggCols.sum_total_hours.col))
   val engagement_daily_active_hours = ColumnDefinition(f.avg(DailyAggCols.sum_active_hours.col))
   val engagement_hourly_uris = ColumnDefinition(
-    f.sum(DailyAggCols.sum_total_uris.col) / f.sum(DailyAggCols.sum_active_hours.col)
+    f.sum(DailyAggCols.sum_total_uris.col) /
+      (f.sum(DailyAggCols.sum_active_hours.col) + hoursEpsilon)
   )
   val engagement_intensity = ColumnDefinition(
-    f.sum(DailyAggCols.sum_active_hours.col) / f.sum(DailyAggCols.sum_total_hours.col)
+    f.sum(DailyAggCols.sum_active_hours.col) /
+      (f.sum(DailyAggCols.sum_total_hours.col) + hoursEpsilon)
   )
 }
 

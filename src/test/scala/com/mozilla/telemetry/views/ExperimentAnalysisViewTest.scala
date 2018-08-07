@@ -223,18 +223,6 @@ class ExperimentAnalysisViewTest extends FlatSpec with Matchers with DataFrameSu
     weekNums should be (Array(1, 1, 2, 2, 3, 3, 4, 4, 5, 5))
   }
 
-  it should "handle division by zero" in {
-    import spark.implicits._
-
-    val df = Seq(
-      outlierEngagementRow,
-      sampleEngagementRow.copy(active_ticks = 0)
-    ).toDF
-
-    val result = ExperimentEngagementAnalyzer.filterOutliersAndAggregatePerClientDaily(df)
-    result.select(EngagementAggCols.engagement_hourly_uris.col).collect().head.getDouble(0) should be (0.0)
-  }
-
   it should "calculate reasonable median and confidence intervals" in {
     import spark.implicits._
 
