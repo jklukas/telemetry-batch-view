@@ -84,14 +84,17 @@ object DailyAggCols extends ColumnEnumeration {
   * Derived enrollment info calculated via window functions.
   */
 object EnrollmentWindowCols extends ColumnEnumeration {
-  private val date: Column = f.to_date(InputCols.submission_date_s3.col, "yyyyMMdd")
-  private val enrollmentDate: Column =
+  val date: Column = f.to_date(InputCols.submission_date_s3.col, "yyyyMMdd")
+  val enrollmentDate: Column =
     f.min(date).over(
       Window
         .partitionBy(InputCols.experiment_id.col, InputCols.experiment_branch.col, InputCols.client_id.col)
         .rowsBetween(Window.unboundedPreceding, Window.unboundedFollowing)
     )
-  val week_number = ColumnDefinition(f.floor(f.datediff(date, enrollmentDate) / 7))
+  val enrollment_date = ColumnDefinition(enrollmentDate)
+
+  // If enrollment date is day 0, week 1 is day 0 to day 6, week 2 is day 7 to day 13, etc.
+  val week_number = ColumnDefinition(f.floor(f.datediff(date, enrollmentDate) / 7) + 1)
 }
 
 /**
@@ -107,19 +110,24 @@ object EngagementAggCols extends ColumnEnumeration {
 
   val hourlyUrisConsideredActive: Int = 5
 
-  private def retained(weekNumber: Int): Column = {
+  /**
+    * We consider a user retained if they match the `hadActivityOnThisDay` condition for
+    * any day in the target week.
+    *
+    * We exclude any activity on the enrollment date so that the week 1 retention is not
+    * always true. Week 1 retention considers activity on days 1 through 6,
+    * week 2 retention is days 7 through 13, and week 3 is days 14 through 20.
+    */
+  private def retentionWindow(hadActivityOnThisDay: Column)(weekNumber: Int): Column = {
     val hadActivityAnyDayInWeek =
       f.max(EnrollmentWindowCols.week_number.col === weekNumber and
-            DailyAggCols.sum_total_hours.col > 0)
+            EnrollmentWindowCols.enrollment_date.col =!= EnrollmentWindowCols.date and
+            hadActivityOnThisDay)
     f.when(hadActivityAnyDayInWeek, 1.0) otherwise 0.0
   }
 
-  private def retainedActive(weekNumber: Int): Column = {
-    val wasActiveAnyDayInWeek =
-      f.max(EnrollmentWindowCols.week_number.col === weekNumber and
-            DailyAggCols.sum_total_uris.col > hourlyUrisConsideredActive)
-    f.when(wasActiveAnyDayInWeek, 1.0) otherwise 0.0
-  }
+  private val retained: Int => Column = retentionWindow(DailyAggCols.sum_total_hours.col > 0)
+  private val retainedActive: Int => Column = retentionWindow(DailyAggCols.sum_total_uris.col > hourlyUrisConsideredActive)
 
   val retained_in_week_1 = ColumnDefinition(retained(1))
   val retained_in_week_2 = ColumnDefinition(retained(2))
@@ -201,7 +209,7 @@ object ExperimentEngagementAnalyzer {
       .drop(InputWindowCols.branch_count.col)
       .groupBy(DailyAggCols.partitionCols: _*)
       .agg(DailyAggCols.exprs.head, DailyAggCols.exprs.tail: _*)
-      .select(f.col("*"), EnrollmentWindowCols.week_number.expr)
+      .select(f.col("*") +: EnrollmentWindowCols.exprs: _*)
       .persist()
 
     inputWithBranchCount.unpersist()
