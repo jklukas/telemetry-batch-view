@@ -140,12 +140,10 @@ object EngagementAggCols extends ColumnEnumeration {
   val engagement_daily_hours = ColumnDefinition(f.avg(DailyAggCols.sum_total_hours.col))
   val engagement_daily_active_hours = ColumnDefinition(f.avg(DailyAggCols.sum_active_hours.col))
   val engagement_hourly_uris = ColumnDefinition(
-    f.sum(DailyAggCols.sum_total_uris.col) /
-      (f.sum(DailyAggCols.sum_active_hours.col) + 1.0 / DailyAggCols.secondsPerHour)
+    f.sum(DailyAggCols.sum_total_uris.col) / f.sum(DailyAggCols.sum_active_hours.col)
   )
   val engagement_intensity = ColumnDefinition(
-    f.sum(DailyAggCols.sum_active_hours.col) /
-      (f.sum(DailyAggCols.sum_total_hours.col) + 1.0 / DailyAggCols.secondsPerHour)
+    f.sum(DailyAggCols.sum_active_hours.col) / f.sum(DailyAggCols.sum_total_hours.col)
   )
 }
 
@@ -188,7 +186,7 @@ object ExperimentEngagementAnalyzer {
   }
 
 
-  private def filterOutliersAndAggregatePerClientDaily(
+  def filterOutliersAndAggregatePerClientDaily(
       input: DataFrame, outlierPercentile: Double = 0.9999, relativeError: Double = 0.0001): DataFrame = {
 
     val inputWithBranchCount = input

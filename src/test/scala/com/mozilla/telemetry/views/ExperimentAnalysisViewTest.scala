@@ -151,7 +151,7 @@ class ExperimentAnalysisViewTest extends FlatSpec with Matchers with DataFrameSu
   }
 
   // Bug 1463248
-  "Experiment Analysis View" can "filter out pings with missing branches" in {
+  it can "filter out pings with missing branches" in {
     import spark.implicits._
 
     val data = missingBranchData.toDS().toDF().where(col("experiment_id") === "id1")
@@ -166,7 +166,7 @@ class ExperimentAnalysisViewTest extends FlatSpec with Matchers with DataFrameSu
     totalClients should be (3.0)
   }
 
-  "Experiment Analysis View" can "filter out pings with missing client IDs" in {
+  it can "filter out pings with missing client IDs" in {
     import spark.implicits._
 
     val data = missingClientId.toDS().toDF().where(col("experiment_id") === "id1")
@@ -181,39 +181,61 @@ class ExperimentAnalysisViewTest extends FlatSpec with Matchers with DataFrameSu
     totalClients should be (3.0)
   }
 
-  "Week number" should "be correctly calculated" in {
+
+  val sampleEngagementRow = ExperimentSummaryEngagementRow(
+    client_id = "client1",
+    experiment_id = "experiment_1",
+    experiment_branch = "control",
+    submission_date_s3 = "20180101",
+    total_time = 3600,
+    active_ticks = 1000,
+    scalar_parent_browser_engagement_total_uri_count = 20
+  )
+
+  // This one row should get thrown out the the outlier cuts.
+  val outlierEngagementRow: ExperimentSummaryEngagementRow = sampleEngagementRow.copy(
+    client_id = "other",
+    total_time = 40000,
+    active_ticks = 10000,
+    scalar_parent_browser_engagement_total_uri_count = 300
+  )
+
+  "Engagement metrics" should "calculate the correct week number" in {
     import spark.implicits._
 
-    val row1 = ExperimentSummaryEngagementRow(
-      client_id = "client1",
-      experiment_id = "experiment_1",
-      experiment_branch = "control",
-      submission_date_s3 = "20180101",
-      total_time = 3600,
-      active_ticks = 1000,
-      scalar_parent_browser_engagement_total_uri_count = 20
-    )
     val df = Seq(
-      row1.copy(submission_date_s3 = "20180101"),
-      row1.copy(submission_date_s3 = "20180107"),
-      row1.copy(submission_date_s3 = "20180108"),
-      row1.copy(submission_date_s3 = "20180114"),
-      row1.copy(submission_date_s3 = "20180115"),
-      row1.copy(submission_date_s3 = "20180121"),
-      row1.copy(submission_date_s3 = "20180122"),
-      row1.copy(submission_date_s3 = "20180128"),
-      row1.copy(submission_date_s3 = "20180129"),
-      row1.copy(submission_date_s3 = "20180201")
+      sampleEngagementRow.copy(submission_date_s3 = "20180101"),
+      sampleEngagementRow.copy(submission_date_s3 = "20180107"),
+      sampleEngagementRow.copy(submission_date_s3 = "20180108"),
+      sampleEngagementRow.copy(submission_date_s3 = "20180114"),
+      sampleEngagementRow.copy(submission_date_s3 = "20180115"),
+      sampleEngagementRow.copy(submission_date_s3 = "20180121"),
+      sampleEngagementRow.copy(submission_date_s3 = "20180122"),
+      sampleEngagementRow.copy(submission_date_s3 = "20180128"),
+      sampleEngagementRow.copy(submission_date_s3 = "20180129"),
+      sampleEngagementRow.copy(submission_date_s3 = "20180201")
     ).toDF()
 
     val weekNums = df
       .select(EnrollmentWindowCols.week_number.expr)
       .collect()
       .map(_.getLong(0))
-    weekNums should be (Array(0, 0, 1, 1, 2, 2, 3, 3, 4, 4))
+    weekNums should be (Array(1, 1, 2, 2, 3, 3, 4, 4, 5, 5))
   }
 
-  "Engagement metrics" can "be calculated" in {
+  it should "handle division by zero" in {
+    import spark.implicits._
+
+    val df = Seq(
+      outlierEngagementRow,
+      sampleEngagementRow.copy(active_ticks = 0)
+    ).toDF
+
+    val result = ExperimentEngagementAnalyzer.filterOutliersAndAggregatePerClientDaily(df)
+    result.select(EngagementAggCols.engagement_hourly_uris.col).collect().head.getDouble(0) should be (0.0)
+  }
+
+  it should "calculate reasonable median and confidence intervals" in {
     import spark.implicits._
 
     val rand = new scala.util.Random(0)
@@ -269,26 +291,10 @@ class ExperimentAnalysisViewTest extends FlatSpec with Matchers with DataFrameSu
     meanStats.confidence_high.get should be <= 1.0
   }
 
-  "Retention metrics" can "be calculated" in {
+  it can "calculate reasonable retention means" in {
     import spark.implicits._
 
-    val enrollmentRow = ExperimentSummaryEngagementRow(
-        client_id = "client1",
-        experiment_id = "experiment_1",
-        experiment_branch = "control",
-        submission_date_s3 = "20180101",
-        total_time = 3600,
-        active_ticks = 1000,
-        scalar_parent_browser_engagement_total_uri_count = 0
-      )
-
-    // This one row should get thrown out the the outlier cuts.
-    val outlier = enrollmentRow.copy(
-      client_id = "other",
-      total_time = 40000,
-      active_ticks = 10000,
-      scalar_parent_browser_engagement_total_uri_count = 300
-    )
+    val enrollmentRow = sampleEngagementRow.copy(submission_date_s3 = "20180101")
 
     val activeInWeek2 = enrollmentRow.copy(
       submission_date_s3 = "20180108",
@@ -297,7 +303,7 @@ class ExperimentAnalysisViewTest extends FlatSpec with Matchers with DataFrameSu
       submission_date_s3 = "20180115",
       scalar_parent_browser_engagement_total_uri_count = 0)
 
-    val data = Seq(enrollmentRow, outlier, activeInWeek2, retainedInWeek3).toDF()
+    val data = Seq(outlierEngagementRow, enrollmentRow, activeInWeek2, retainedInWeek3).toDF()
 
     val metrics = ExperimentEngagementAnalyzer.getMetrics(data, iterations = 5)
 
